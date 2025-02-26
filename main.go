@@ -88,10 +88,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "        监听目录路径，用于监控文件变化\n")
 		fmt.Fprintf(os.Stderr, "  -port string\n")
 		fmt.Fprintf(os.Stderr, "        HTTP 服务端口 (默认 \"8333\")\n")
-		fmt.Fprintf(os.Stderr, "  -pwd string\n")
-		fmt.Fprintf(os.Stderr, "        设置访问密码 (默认 \"password123\")\n")
-		fmt.Fprintf(os.Stderr, "  -host_group string\n")
-		fmt.Fprintf(os.Stderr, "        指定默认主机组 (默认为 windows)\n")
 		fmt.Fprintf(os.Stderr, "  -exclude string\n")
 		fmt.Fprintf(os.Stderr, "        排除的文件支持正则，多个模式用逗号分隔 (例如: *.tmp,*.log)\n")
 		fmt.Fprintf(os.Stderr, "  -h\n")
@@ -104,6 +100,8 @@ func main() {
 	// 添加命令行参数
 	watchPath := flag.String("watch", appConfig.Autoupdater.Watch.Path, "监听目录路径")
 	mode := flag.String("mode", appConfig.Autoupdater.Mode, "启动模式")
+	exclude := flag.String("exclude", appConfig.Autoupdater.Watch.Exclude, "排除的文件支持正则，多个模式用逗号分隔 (例如: *.tmp,*.log)")
+
 	flag.Parse()
 
 	if *mode == "watch" {
@@ -111,6 +109,7 @@ func main() {
 			log.Fatalf("监听目录路径不能为空")
 		}
 
+		excludePatterns = strings.Split(*exclude, ",")
 		log.Printf("开始监听目录: %s", *watchPath)
 		if err := startFileWatcher(*watchPath); err != nil {
 			log.Fatalf("启动监听失败: %v", err)
