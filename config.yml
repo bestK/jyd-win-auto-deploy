@@ -14,9 +14,9 @@ autoupdater:
         path: "/home/ansible-playbook/win_auto_update_tomcat.yml" # 剧本文件路径
         forks: 1 # 并发数
   watch:
-    path: "D:\\workspace\\HamsterKombatBot" # 监听目录路径
+    path: "D:\\360" # 监听目录路径
     exclude: "*.tmp,*.log" # 排除的文件支持正则，多个模式用逗号分隔 (例如: *.tmp,*.log)
-    time_before: "2024-08-01 00:00" # 监控时间范围
+    time_before: "2024-08-26 00:00" # 监控时间范围
     time_after: "2026-02-26 08:00" # 监控时间范围
 
     

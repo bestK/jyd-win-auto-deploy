@@ -103,6 +103,8 @@ func main() {
 
 		excludePatterns = strings.Split(*exclude, ",")
 		log.Printf("开始监听目录: %s", *watchPath)
+		log.Printf("开始时间: %s, 结束时间: %s", appConfig.Autoupdater.Watch.TimeBefore, appConfig.Autoupdater.Watch.TimeAfter)
+		log.Printf("排除的文件: %v", excludePatterns)
 		if err := startFileWatcher(*watchPath); err != nil {
 			log.Fatalf("启动监听失败: %v", err)
 		}
@@ -417,10 +419,15 @@ func startFileWatcher(path string) error {
 				if err != nil {
 					log.Fatalf("解析开始时间失败: %v", err)
 				}
-				endTime, err := time.Parse("2006-01-02 15:04", appConfig.Autoupdater.Watch.TimeAfter)
-				if err != nil {
-					log.Fatalf("解析结束时间失败: %v", err)
+				endTime := time.Now()
+				// 检查结束时间是否为空
+				if appConfig.Autoupdater.Watch.TimeAfter != "" {
+					endTime, err = time.Parse("2006-01-02 15:04", appConfig.Autoupdater.Watch.TimeAfter)
+					if err != nil {
+						log.Fatalf("解析结束时间失败: %v", err)
+					}
 				}
+
 				if err := createZipFromChangedFiles(path, startTime, endTime); err != nil {
 					log.Fatalf("创建压缩包失败: %s %v", path, err)
 				}
@@ -491,6 +498,7 @@ func shouldExcludeFile(path string) bool {
 	for _, pattern := range excludePatterns {
 		matched, err := filepath.Match(pattern, fileName)
 		if err == nil && matched {
+			log.Printf("排除文件: %s, 文件路径: %s", pattern, path)
 			return true
 		}
 	}
@@ -549,7 +557,6 @@ func createZipFromChangedFiles(root string, startTime, endTime time.Time) error 
 	stateMutex.RLock()
 	defer stateMutex.RUnlock()
 
-
 	hasChanges := false
 	changedFiles := make(map[string]bool) // 记录符合条件的文件路径
 
@@ -572,6 +579,11 @@ func createZipFromChangedFiles(root string, startTime, endTime time.Time) error 
 	// 遍历文件系统，查找符合时间范围的文件
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		// 检查文件是否应该被排除
+		if shouldExcludeFile(path) {
 			return nil
 		}
 
