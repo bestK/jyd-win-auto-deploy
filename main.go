@@ -54,6 +54,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok || username != validUsername || password != validPassword {
+			log.Printf("登录失败，用户名: %s，密码: %s", username, password) // 添加调试日志
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			http.Error(w, "未授权访问", http.StatusUnauthorized)
 			return
@@ -122,7 +123,7 @@ func main() {
 		http.HandleFunc("/api/deploy", authMiddleware(handleDeploy))
 		http.HandleFunc("/api/hosts", authMiddleware(handleGetHosts))
 		http.Handle("/", http.FileServer(http.Dir("static")))
-		fmt.Printf("Server starting on :%s...\n", port)
+		fmt.Printf("Server starting on :%s...\npassword:%s", port, validPassword)
 		http.ListenAndServe(":"+port, nil)
 	} else {
 		log.Fatalf("无效的启动模式: %s", *mode)
