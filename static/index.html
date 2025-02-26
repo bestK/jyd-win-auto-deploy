@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSS Windows Server 自动部署系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.0.0/css/all.min.css">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -74,7 +75,8 @@
             font-size: 14px;
         }
         button:hover {
-            background-color: #2ea043;
+            background-color: var(--hover-color, #2ea043);
+            opacity: 0.9;
         }
         button:disabled {
             background-color: #22863a66;
@@ -230,11 +232,27 @@
         }
 
         .host-item {
+            display: flex;
+            align-items: center;
             color: #8b949e;
             margin-bottom: 8px;
             padding: 8px;
             border: 1px solid #30363d;
             border-radius: 4px;
+        }
+
+        .host-item label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: #238636;
         }
 
         /* 添加登录表单样式 */
@@ -270,8 +288,8 @@
             margin-bottom: 16px;
         }
 
-        /* 添加环境选择下拉框样式 */
-        select {
+        /* 修改环境选择下拉框样式 */
+        select#envSelect {
             width: 100%;
             padding: 8px;
             margin-bottom: 16px;
@@ -279,6 +297,109 @@
             border: 1px solid #30363d;
             border-radius: 6px;
             color: #c9d1d9;
+            box-sizing: border-box;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        select#envSelect option {
+            font-weight: bold;
+            padding: 10px;
+        }
+
+        select#envSelect option[value="test"] {
+            color: #58a6ff;  /* 测试环境使用蓝色 */
+        }
+
+        select#envSelect option[value="prod"] {
+            color: #7ee787;  /* 生产环境使用绿色 */
+        }
+
+        /* 修改按钮悬停样式 */
+        button:hover {
+            background-color: var(--hover-color, #2ea043);
+            opacity: 0.9;
+        }
+
+        #deployBtn:disabled {
+            cursor: not-allowed;
+            background: #238636;
+            opacity: 0.5;
+        }
+
+        /* 测试环境按钮悬停样式 */
+        #deployBtn[style*="rgb(31, 111, 235)"]:hover {
+            --hover-color: #388bfd;
+        }
+
+        /* 生产环境按钮悬停样式 */
+        #deployBtn[style*="rgb(35, 134, 54)"]:hover {
+            --hover-color: #2ea043;
+        }
+
+        /* 当下拉框被选中时的样式 */
+        select#envSelect:focus {
+            border-color: #1f6feb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.3);
+        }
+
+        /* 添加日志操作按钮样式 */
+        .output-controls {
+            display: none;
+            gap: 8px;
+            margin-bottom: 8px;
+            margin-top: 8px;
+            justify-content: flex-end;
+        }
+
+        .output-controls i{
+            cursor: pointer;
+        }
+
+        .output-controls i + i {
+            margin-left: 8px;
+        }
+
+        .output-control-btn {
+            padding: 6px 12px;
+            background-color: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .output-control-btn:hover {
+            background-color: #30363d;
+        }
+
+        .output-control-btn i {
+            font-size: 14px;
+        }
+
+        /* 添加复制成功的提示样式 */
+        .copy-tooltip {
+            position: fixed;
+            background: #238636;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .copy-tooltip.show {
+            opacity: 1;
+        }
+
+        #deploySection {
             box-sizing: border-box;
         }
     </style>
@@ -354,23 +475,40 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
                             <option value="test">测试环境</option>
                             <option value="prod">生产环境</option>
                         </select>
-                        <!-- 添加主机列表显示区域 -->
+                        <!-- 修改主机列表显示区域 -->
                         <div id="hostList" class="host-list" style="display: none;">
-                            <h4>当前环境主机列表：</h4>
+                            <h4>选择部署主机：</h4>
+                            <div style="margin-bottom: 10px;">
+                                <label>
+                                    <input type="checkbox" id="selectAllHosts" checked onchange="toggleAllHosts()">
+                                    全选/取消全选
+                                </label>
+                            </div>
                             <div id="hostListContent"></div>
                         </div>
                     </div>
-                    <button onclick="deploy()" id="deployBtn">开始部署</button>
-                    <div id="output"></div>
+                    <button onclick="deploy()" disabled id="deployBtn">开始部署</button>
+                    <div id="output">
+                    </div>
+                    <div class="output-controls" >
+                            <i class="fas fa-copy" onclick="copyOutput(event)"></i> 
+                            <i class="fas fa-download" onclick="downloadOutput(event)"></i> 
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // 声明异步函数以使用 await
+        async function initializeHosts() {
+            const testHosts = await fetchHosts('test');
+            const prodHosts = await fetchHosts('prod');
+        }
 
-        const testHosts = [''];
-        const prodHosts = [];
+        // 调用初始化函数
+        initializeHosts();
+ 
 
         // 添加登录相关函数
         async function login() {
@@ -470,17 +608,24 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
             }
         }
 
-        // 添加显示环境主机的函数
+        // 修改显示环境主机的函数
         function showEnvironmentHosts() {
             const envSelect = document.getElementById('envSelect');
             const hostList = document.getElementById('hostList');
             const hostListContent = document.getElementById('hostListContent');
+            const selectAllCheckbox = document.getElementById('selectAllHosts');
+            const deployBtn = document.getElementById('deployBtn'); // 获取部署按钮
             const selectedEnv = envSelect.value;
             
             if (!selectedEnv) {
                 hostList.style.display = 'none';
+                deployBtn.style.backgroundColor = '#238636'; // 重置按钮颜色
                 return;
             }
+            
+            // 根据环境设置部署按钮颜色
+            deployBtn.style.backgroundColor = selectedEnv === 'test' ? '#1f6feb' : '#238636';
+            deployBtn.style.borderColor = selectedEnv === 'test' ? '#1f6feb' : '#238636';
             
             // 获取对应环境的主机列表
             const hosts = selectedEnv === 'test' ? testHosts : prodHosts;
@@ -490,14 +635,56 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
             hosts.forEach(host => {
                 const hostItem = document.createElement('div');
                 hostItem.className = 'host-item';
-                hostItem.textContent = host;
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkbox.value = host;
+                checkbox.className = 'host-checkbox';
+                checkbox.onchange = updateSelectAllCheckbox;
+                
+                const label = document.createElement('label');
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(` ${host}`));
+                
+                hostItem.appendChild(label);
                 hostListContent.appendChild(hostItem);
             });
             
-            // 显示主机列表
+            selectAllCheckbox.checked = true;
             hostList.style.display = 'block';
+            deployBtn.disabled = false
         }
 
+        // 添加全选/取消全选功能
+        function toggleAllHosts() {
+            const selectAllCheckbox = document.getElementById('selectAllHosts');
+            const hostCheckboxes = document.querySelectorAll('.host-checkbox');
+            hostCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+            checkHostCheckbox()
+        }
+
+        function checkHostCheckbox() {
+            const hostCheckboxes = document.querySelectorAll('.host-checkbox');
+            if(Array.from(hostCheckboxes).some(checkbox => checkbox.checked)){
+                deployBtn.disabled = false;
+            }else{
+                deployBtn.disabled = true;
+            }
+        }
+
+        // 更新全选框状态
+        function updateSelectAllCheckbox() {
+            const hostCheckboxes = document.querySelectorAll('.host-checkbox');
+            const selectAllCheckbox = document.getElementById('selectAllHosts');
+            const allChecked = Array.from(hostCheckboxes).every(checkbox => checkbox.checked);
+            selectAllCheckbox.checked = allChecked;
+            
+            checkHostCheckbox()
+        }
+
+        // 修改 deploy 函数，在部署完成后显示按钮
         async function deploy() {
             const deployBtn = document.getElementById('deployBtn');
             const output = document.getElementById('output');
@@ -509,16 +696,25 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
                 return;
             }
             
-            // 获取对应环境的主机列表
-            const selectedHosts = selectedEnv === 'test' ? testHosts : prodHosts;
+            // 获取选中的主机
+            const selectedHosts = Array.from(document.querySelectorAll('.host-checkbox:checked'))
+                .map(checkbox => checkbox.value);
             
             if (selectedHosts.length === 0) {
-                output.innerHTML = '当前环境没有可用的主机<br><br>';
+                output.innerHTML = '请至少选择一个部署主机<br><br>';
+                return;
+            }
+
+            // 添加确认提示
+            const envName = selectedEnv === 'test' ? '测试' : '生产';
+            const confirmMessage = `确认要在${envName}环境的以下服务器进行部署吗？\n${selectedHosts.join('\n')}`;
+            
+            if (!confirm(confirmMessage)) {
                 return;
             }
             
             deployBtn.disabled = true;
-            output.innerHTML = `开始在${selectedEnv === 'test' ? '测试' : '生产'}环境进行部署...<br><br>`;
+            output.innerHTML = `开始在${envName}环境进行部署...<br><br>`;
 
             try {
                 const response = await fetch('/api/deploy', {
@@ -541,6 +737,8 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
                         deployStep.classList.remove('current');
                         deployStep.classList.add('completed');
                         deployBtn.disabled = true;
+                        // 显示日志操作按钮
+                        document.querySelector('.output-controls').style.display = 'flex';
                         break;
                     }
                     
@@ -559,6 +757,8 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
                 deployStep.classList.remove('current');
                 deployStep.classList.add('error');
                 deployBtn.disabled = false;
+                // 显示日志操作按钮
+                document.querySelector('.output-controls').style.display = 'flex';
             }
         }
 
@@ -579,6 +779,82 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
                 showEnvironmentHosts();
             }
         });
+
+        // 复制日志内容
+        function copyOutput(event) {
+            const output = document.getElementById('output');
+            const text = output.innerText;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                // 显示复制成功提示
+                const tooltip = document.createElement('div');
+                tooltip.className = 'copy-tooltip';
+                tooltip.textContent = '复制成功';
+                
+                // 获取按钮位置
+                const btn = event.target;
+                const rect = btn.getBoundingClientRect();
+                
+                // 设置提示位置
+                tooltip.style.left = `${rect.left}px`;
+                tooltip.style.top = `${rect.bottom + 8}px`;
+                
+                document.body.appendChild(tooltip);
+                
+                // 显示提示
+                setTimeout(() => tooltip.classList.add('show'), 10);
+                
+                // 移除提示
+                setTimeout(() => {
+                    tooltip.classList.remove('show');
+                    setTimeout(() => tooltip.remove(), 300);
+                }, 2000);
+            });
+        }
+
+        // 下载日志内容
+        function downloadOutput() {
+            const output = document.getElementById('output');
+            const text = output.innerText;
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `deployment-log-${timestamp}.txt`;
+            
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            // 清理
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+        }
+
+        // 修改 fetchHosts 函数以适应新的 JSON 响应格式
+        async function fetchHosts(env) {
+            try {
+                const response = await fetch(`/api/hosts`, {
+                    headers: {
+                        'Authorization': `Basic ${sessionStorage.getItem('auth')}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('获取主机列表失败');
+                }
+                
+                const data = await response.json();
+                return data[env] || []; // 根据环境返回相应的主机列表
+            } catch (error) {
+                console.error('获取主机列表错误:', error);
+                return [];
+            }
+        }
     </script>
 </body>
 </html> 

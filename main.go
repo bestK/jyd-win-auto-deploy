@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bestk/jyd-win-auto-deploy/config"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -31,7 +32,6 @@ type FileState struct {
 var (
 	validUsername = "admin"
 	validPassword = "password123" // 默认密码
-	hostGroup     string          // 添加全局变量
 
 	// 根据操作系统设置默认目标目录
 	defaultTargetDir = func() string {
@@ -45,6 +45,8 @@ var (
 	fileStates      = make(map[string]*FileState)
 	stateMutex      sync.RWMutex
 	excludePatterns []string // 添加排除模式列表
+
+	appConfig *config.Config
 )
 
 // 添加认证中间件
@@ -66,9 +68,22 @@ type DeployRequest struct {
 }
 
 func main() {
+	// 加载配置文件
+	var err error
+	appConfig, err = config.LoadConfig("config.yml")
+	if err != nil {
+		log.Fatalf("加载配置文件失败: %v", err)
+	}
+
+	// 使用配置文件中的值
+	validPassword = appConfig.Autoupdater.Server.Password
+	port := appConfig.Autoupdater.Server.Port
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "用法: %s [选项]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "选项:\n")
+		fmt.Fprintf(os.Stderr, "  -mode string\n")
+		fmt.Fprintf(os.Stderr, "        启动模式，可选值: watch, server (默认 \"server\")\n")
 		fmt.Fprintf(os.Stderr, "  -watch string\n")
 		fmt.Fprintf(os.Stderr, "        监听目录路径，用于监控文件变化\n")
 		fmt.Fprintf(os.Stderr, "  -port string\n")
@@ -87,41 +102,31 @@ func main() {
 	}
 
 	// 添加命令行参数
-	watchPath := flag.String("watch", "", "监听目录路径")
-	port := flag.String("port", "8333", "HTTP 服务端口")
-	password := flag.String("pwd", "password123", "访问密码")
-	tmpHostGroup := flag.String("host_group", "windows", "默认主机组")
-	excludeFlag := flag.String("exclude", "", "排除的文件模式，多个模式用逗号分隔 (例如: *.tmp,*.log)")
+	watchPath := flag.String("watch", appConfig.Autoupdater.Watch.Path, "监听目录路径")
+	mode := flag.String("mode", appConfig.Autoupdater.Mode, "启动模式")
 	flag.Parse()
 
-	// 设置密码
-	validPassword = *password
-	hostGroup = *tmpHostGroup // 设置全局变量
-
-	// 处理排除模式
-	if *excludeFlag != "" {
-		excludePatterns = strings.Split(*excludeFlag, ",")
-		for i, pattern := range excludePatterns {
-			excludePatterns[i] = strings.TrimSpace(pattern)
+	if *mode == "watch" {
+		if *watchPath == "" {
+			log.Fatalf("监听目录路径不能为空")
 		}
-	}
 
-	// 如果提供了 watch 参数，启动文件监听
-	if *watchPath != "" {
 		log.Printf("开始监听目录: %s", *watchPath)
 		if err := startFileWatcher(*watchPath); err != nil {
 			log.Fatalf("启动监听失败: %v", err)
 		}
 		// 阻塞主线程
 		select {}
-	} else {
-		// 原有的 HTTP 服务逻辑
+	} else if *mode == "server" {
+
 		http.HandleFunc("/api/upload", authMiddleware(handleUpload))
 		http.HandleFunc("/api/deploy", authMiddleware(handleDeploy))
 		http.HandleFunc("/api/hosts", authMiddleware(handleGetHosts))
 		http.Handle("/", http.FileServer(http.Dir("static")))
-		fmt.Printf("Server starting on :%s...\n", *port)
-		http.ListenAndServe(":"+*port, nil)
+		fmt.Printf("Server starting on :%s...\n", port)
+		http.ListenAndServe(":"+port, nil)
+	} else {
+		log.Fatalf("无效的启动模式: %s", *mode)
 	}
 }
 
@@ -140,7 +145,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// 确保目标目录存在
-	targetDir := "/home/autoupdater/class/"
+	targetDir := appConfig.Autoupdater.Server.UploadPath
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		http.Error(w, "创建目录失败", http.StatusInternalServerError)
 		return
@@ -196,12 +201,6 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查是否提供了主机列表
-	if len(requestData.Hosts) == 0 {
-		http.Error(w, "未提供目标主机", http.StatusBadRequest)
-		return
-	}
-
 	// 设置响应头，支持流式输出
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -214,21 +213,32 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	c := appConfig.Autoupdater.Server
+
 	// 构建 ansible-playbook 命令
 	var cmdArgs []string
-	cmdArgs = append(cmdArgs, "-i", "/etc/ansible/hosts")
+	cmdArgs = append(cmdArgs, "-i", c.Ansible.HostConfig.Path)
 
 	if requestData.HostGroup != "" {
-		// 如果指定了主机组，使用主机组
+		// 检查主机组是否在允许列表中
+		groupAllowed := false
+		for _, allowedGroup := range c.Ansible.HostConfig.IncludeGroup {
+			if requestData.HostGroup == allowedGroup {
+				groupAllowed = true
+				break
+			}
+		}
+		if !groupAllowed {
+			http.Error(w, "不允许的主机组", http.StatusBadRequest)
+			return
+		}
 		cmdArgs = append(cmdArgs, "--limit", requestData.HostGroup)
 	} else if len(requestData.Hosts) > 0 {
-		// 否则使用主机列表
-		hostsString := strings.Join(requestData.Hosts, ",")
-		cmdArgs = append(cmdArgs, "--limit", hostsString)
+		cmdArgs = append(cmdArgs, "--limit", strings.Join(requestData.Hosts, ","))
 	}
 
-	cmdArgs = append(cmdArgs, "--forks=1")
-	cmdArgs = append(cmdArgs, "/home/ansible-playbook/win_auto_update_tomcat.yml")
+	cmdArgs = append(cmdArgs, fmt.Sprintf("--forks=%d", c.Ansible.PlaybookConfig.Forks))
+	cmdArgs = append(cmdArgs, c.Ansible.PlaybookConfig.Path)
 
 	cmd := exec.Command("ansible-playbook", cmdArgs...)
 
@@ -331,44 +341,59 @@ func handleGetHosts(w http.ResponseWriter, r *http.Request) {
 	// 设置响应头
 	w.Header().Set("Content-Type", "application/json")
 
+	c := appConfig.Autoupdater.Server
+
 	// 读取 hosts 文件
-	hosts, err := os.ReadFile("/etc/ansible/hosts")
+	hosts, err := os.ReadFile(c.Ansible.HostConfig.Path)
 	if err != nil {
 		http.Error(w, "无法读取 hosts 文件", http.StatusInternalServerError)
 		return
 	}
 
-	// 解析文件内容，提取 Windows 主机
-	var windowsHosts []string
-	inWindowsGroup := false
+	var prodHosts []string
+	var testHosts []string
+	currentGroupEnv := ""
 	scanner := bufio.NewScanner(strings.NewReader(string(hosts)))
+
+	includeGroups := c.Ansible.HostConfig.IncludeGroup
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// 检查是否进入 Windows 主机组
-		if strings.HasPrefix(line, "[") && strings.Contains(strings.ToLower(line), hostGroup) {
-			inWindowsGroup = true
-			continue
-		} else if strings.HasPrefix(line, "[") {
-			inWindowsGroup = false
+		if strings.HasPrefix(line, "[") {
+			currentGroupEnv = ""
+			// 检查是否匹配任何包含的组
+			for _, group := range includeGroups {
+				if strings.Contains(strings.ToLower(line), strings.ToLower(group)) {
+					if strings.Contains(strings.ToLower(line), "prod") {
+						currentGroupEnv = "prod"
+					} else if strings.Contains(strings.ToLower(line), "test") {
+						currentGroupEnv = "test"
+					}
+					break
+				}
+			}
 			continue
 		}
 
-		// 如果在 Windows 组中且行不为空，添加主机
-		if inWindowsGroup && line != "" && !strings.HasPrefix(line, "#") {
+		if currentGroupEnv != "" && line != "" && !strings.HasPrefix(line, "#") {
 			// 提取主机名（如果有其他配置，只取第一部分）
 			host := strings.Split(line, " ")[0]
 			// 只有当是有效的IP地址时才添加
 			if isValidIPAddress(host) {
-				windowsHosts = append(windowsHosts, host)
+				if currentGroupEnv == "prod" {
+					prodHosts = append(prodHosts, host)
+				} else if currentGroupEnv == "test" {
+					testHosts = append(testHosts, host)
+				}
 			}
 		}
 	}
 
 	// 返回 JSON 响应
 	response := map[string]interface{}{
-		"hosts": windowsHosts,
+		"prod": prodHosts,
+		"test": testHosts,
 	}
 
 	json.NewEncoder(w).Encode(response)

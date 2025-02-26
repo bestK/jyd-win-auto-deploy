@@ -1,0 +1,22 @@
+autoupdater:
+  mode: "server" # 启动模式可选值: watch, server (默认 "server")
+  server:
+    port: 8333 # 服务端口
+    password: "123456" # 服务密码
+    upload_path: "/home/autoupdater/class/" # 上传路径
+    ansible:
+      host_config:
+        path: "/etc/ansible/hosts" # 主机配置文件路径
+        include_group:
+          - "win_css_serv_prod" # 主机组
+          - "win_css_serv_test" # 主机组
+      playbook_config:
+        path: "/home/ansible-playbook/win_auto_update_tomcat.yml" # 剧本文件路径
+        forks: 1 # 并发数
+  watch:
+    path: "/home/autoupdater/class/" # 监听目录路径
+
+    
+    
+ 
+
