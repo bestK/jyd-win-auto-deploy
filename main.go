@@ -31,6 +31,7 @@ type FileState struct {
 var (
 	validUsername = "admin"
 	validPassword = "password123" // 默认密码
+	hostGroup     string          // 添加全局变量
 
 	// 根据操作系统设置默认目标目录
 	defaultTargetDir = func() string {
@@ -59,6 +60,11 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+type DeployRequest struct {
+	Hosts     []string `json:"hosts"`
+	HostGroup string   `json:"host_group"` // 添加主机组字段
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "用法: %s [选项]\n\n", os.Args[0])
@@ -69,6 +75,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "        HTTP 服务端口 (默认 \"8333\")\n")
 		fmt.Fprintf(os.Stderr, "  -pwd string\n")
 		fmt.Fprintf(os.Stderr, "        设置访问密码 (默认 \"password123\")\n")
+		fmt.Fprintf(os.Stderr, "  -host_group string\n")
+		fmt.Fprintf(os.Stderr, "        指定默认主机组 (默认为 windows)\n")
 		fmt.Fprintf(os.Stderr, "  -exclude string\n")
 		fmt.Fprintf(os.Stderr, "        排除的文件支持正则，多个模式用逗号分隔 (例如: *.tmp,*.log)\n")
 		fmt.Fprintf(os.Stderr, "  -h\n")
@@ -82,11 +90,13 @@ func main() {
 	watchPath := flag.String("watch", "", "监听目录路径")
 	port := flag.String("port", "8333", "HTTP 服务端口")
 	password := flag.String("pwd", "password123", "访问密码")
+	tmpHostGroup := flag.String("host_group", "windows", "默认主机组")
 	excludeFlag := flag.String("exclude", "", "排除的文件模式，多个模式用逗号分隔 (例如: *.tmp,*.log)")
 	flag.Parse()
 
 	// 设置密码
 	validPassword = *password
+	hostGroup = *tmpHostGroup // 设置全局变量
 
 	// 处理排除模式
 	if *excludeFlag != "" {
@@ -180,9 +190,7 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 解析请求体中的 JSON 数据
-	var requestData struct {
-		Hosts []string `json:"hosts"`
-	}
+	var requestData DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
 		http.Error(w, "无法解析请求数据", http.StatusBadRequest)
 		return
@@ -206,13 +214,23 @@ func handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 修改命令，添加 --limit 参数和 --forks=1 参数
-	hostsString := strings.Join(requestData.Hosts, ",")
-	cmd := exec.Command("ansible-playbook",
-		"-i", "/etc/ansible/hosts",
-		"--limit", hostsString,
-		"--forks=1",
-		"/home/ansible-playbook/win_auto_update_tomcat.yml")
+	// 构建 ansible-playbook 命令
+	var cmdArgs []string
+	cmdArgs = append(cmdArgs, "-i", "/etc/ansible/hosts")
+
+	if requestData.HostGroup != "" {
+		// 如果指定了主机组，使用主机组
+		cmdArgs = append(cmdArgs, "--limit", requestData.HostGroup)
+	} else if len(requestData.Hosts) > 0 {
+		// 否则使用主机列表
+		hostsString := strings.Join(requestData.Hosts, ",")
+		cmdArgs = append(cmdArgs, "--limit", hostsString)
+	}
+
+	cmdArgs = append(cmdArgs, "--forks=1")
+	cmdArgs = append(cmdArgs, "/home/ansible-playbook/win_auto_update_tomcat.yml")
+
+	cmd := exec.Command("ansible-playbook", cmdArgs...)
 
 	// 获取命令的标准输出和标准错误管道
 	stdout, err := cmd.StdoutPipe()
@@ -329,7 +347,7 @@ func handleGetHosts(w http.ResponseWriter, r *http.Request) {
 		line := strings.TrimSpace(scanner.Text())
 
 		// 检查是否进入 Windows 主机组
-		if strings.HasPrefix(line, "[") && strings.Contains(strings.ToLower(line), "windows") {
+		if strings.HasPrefix(line, "[") && strings.Contains(strings.ToLower(line), hostGroup) {
 			inWindowsGroup = true
 			continue
 		} else if strings.HasPrefix(line, "[") {
