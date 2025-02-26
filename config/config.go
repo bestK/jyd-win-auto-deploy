@@ -26,8 +26,10 @@ type Config struct {
 			} `yaml:"ansible"`
 		} `yaml:"server"`
 		Watch struct {
-			Path    string `yaml:"path"`
-			Exclude string `yaml:"exclude"`
+			Path       string `yaml:"path"`
+			Exclude    string `yaml:"exclude"`
+			TimeBefore string `yaml:"time_before"`
+			TimeAfter  string `yaml:"time_after"`
 		} `yaml:"watch"`
 	} `yaml:"autoupdater"`
 }

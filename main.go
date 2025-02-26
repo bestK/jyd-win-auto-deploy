@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -32,15 +31,6 @@ type FileState struct {
 var (
 	validUsername = "admin"
 	validPassword = "password123" // 默认密码
-
-	// 根据操作系统设置默认目标目录
-	defaultTargetDir = func() string {
-		if runtime.GOOS == "windows" {
-			// Windows 下使用当前目录下的 autoupdater 文件夹
-			return "./autoupdater/"
-		}
-		return "./autoupdater/" // 修改为当前目录
-	}()
 
 	fileStates      = make(map[string]*FileState)
 	stateMutex      sync.RWMutex
@@ -69,6 +59,7 @@ type DeployRequest struct {
 }
 
 func main() {
+
 	// 加载配置文件
 	var err error
 	appConfig, err = config.LoadConfig("config.yml")
@@ -421,8 +412,17 @@ func startFileWatcher(path string) error {
 			input = strings.TrimSpace(strings.ToLower(input))
 
 			if input == "zip" {
-				if err := createZipFromChangedFiles(path); err != nil {
-					log.Printf("创建压缩包失败: %v", err)
+				log.Printf("时间配置，开始时间: %s, 结束时间: %s", appConfig.Autoupdater.Watch.TimeBefore, appConfig.Autoupdater.Watch.TimeAfter)
+				startTime, err := time.Parse("2006-01-02 15:04", appConfig.Autoupdater.Watch.TimeBefore)
+				if err != nil {
+					log.Fatalf("解析开始时间失败: %v", err)
+				}
+				endTime, err := time.Parse("2006-01-02 15:04", appConfig.Autoupdater.Watch.TimeAfter)
+				if err != nil {
+					log.Fatalf("解析结束时间失败: %v", err)
+				}
+				if err := createZipFromChangedFiles(path, startTime, endTime); err != nil {
+					log.Fatalf("创建压缩包失败: %s %v", path, err)
 				}
 			}
 		}
@@ -544,59 +544,84 @@ func handleFileChange(event fsnotify.Event, root string) {
 	}
 }
 
-func createZipFromChangedFiles(root string) error {
+// 压缩所有符合条件的文件
+func createZipFromChangedFiles(root string, startTime, endTime time.Time) error {
 	stateMutex.RLock()
 	defer stateMutex.RUnlock()
 
-	// 检查是否有变化的文件
+
 	hasChanges := false
-	for _, state := range fileStates {
-		if !state.ChangedAt.IsZero() {
+	changedFiles := make(map[string]bool) // 记录符合条件的文件路径
+
+	// 遍历 fileStates 记录的文件变化
+	for path, state := range fileStates {
+		if state.IsDeleted || state.ChangedAt.IsZero() {
+			continue
+		}
+		if state.ChangedAt.After(startTime) && state.ChangedAt.Before(endTime) {
+			changedFiles[path] = true
 			hasChanges = true
-			break
 		}
 	}
+
+	if !hasChanges && startTime.IsZero() && endTime.IsZero() {
+		log.Printf("没有检测到文件变化，跳过创建压缩包")
+		return nil
+	}
+
+	// 遍历文件系统，查找符合时间范围的文件
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		loc, _ := time.LoadLocation("Local")
+		if info.ModTime().In(loc).After(startTime) && info.ModTime().In(loc).Before(endTime) {
+			log.Printf("文件路径: %s, 修改时间: %s", path, info.ModTime().In(loc).Format("2006-01-02 15:04:05"))
+			changedFiles[path] = true
+			hasChanges = true
+		}
+		return nil
+	})
 
 	if !hasChanges {
 		log.Printf("没有检测到文件变化，跳过创建压缩包")
 		return nil
 	}
 
-	// 使用当前目录下的 autoupdater 文件夹
-	targetDir := filepath.Clean(defaultTargetDir)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return fmt.Errorf("创建目标目录失败: %v", err)
+	// 创建 ZIP 目录
+	// 程序当前运行目录
+	targetDir, err := os.Getwd()
+	if err != nil {
+		log.Printf("获取当前目录失败: %v", err)
+		return fmt.Errorf("获取当前目录失败: %v", err)
+	}
+
+	log.Printf("创建目标目录: %s", targetDir)
+	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
+		return fmt.Errorf("创建目标目录失败:%v", err)
 	}
 
 	zipPath := filepath.Join(targetDir, "auto_updated.zip")
 	zipFile, err := os.Create(zipPath)
 	if err != nil {
-		return fmt.Errorf("创建压缩文件失败: %v", err)
+		return fmt.Errorf("创建压缩文件失败: %s %v", zipPath, err)
 	}
 	defer zipFile.Close()
 
 	archive := zip.NewWriter(zipFile)
 	defer archive.Close()
 
-	changedFiles := 0
-	for path, state := range fileStates {
-		if state.ChangedAt.IsZero() {
-			continue // 跳过未变化的文件
-		}
-
-		// 获取相对于监听目录的路径
+	// 添加符合条件的文件到压缩包
+	addedFiles := 0
+	for path := range changedFiles {
 		relPath, err := filepath.Rel(root, path)
 		if err != nil {
 			log.Printf("获取相对路径失败 %s: %v", path, err)
 			continue
 		}
-		// 统一使用正斜杠作为路径分隔符
-		relPath = filepath.ToSlash(relPath)
 
-		if state.IsDeleted {
-			log.Printf("文件已删除: %s", relPath)
-			continue
-		}
+		relPath = filepath.ToSlash(relPath) // 统一路径格式
 
 		info, err := os.Stat(path)
 		if err != nil {
@@ -610,7 +635,6 @@ func createZipFromChangedFiles(root string) error {
 			continue
 		}
 
-		// 设置压缩包中的文件路径为相对路径
 		header.Name = relPath
 		header.Method = zip.Deflate
 
@@ -633,13 +657,15 @@ func createZipFromChangedFiles(root string) error {
 			continue
 		}
 
-		changedFiles++
-		log.Printf("添加变化的文件到压缩包: %s", relPath)
+		addedFiles++
+		log.Printf("添加文件到压缩包: %s", relPath)
 
-		// 重置文件状态
-		state.ChangedAt = time.Time{}
+		// 重置 fileStates 记录
+		if state, exists := fileStates[path]; exists {
+			state.ChangedAt = time.Time{}
+		}
 	}
 
-	log.Printf("压缩包创建完成，共包含 %d 个变化的文件", changedFiles)
+	log.Printf("压缩包创建完成，共包含 %d 个变化的文件", addedFiles)
 	return nil
 }
