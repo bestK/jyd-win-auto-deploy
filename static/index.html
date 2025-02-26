@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Windows Server 自动部署系统</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        .container {
+            background-color: #161b22;
+            padding: 24px;
+            border-radius: 6px;
+            border: 1px solid #30363d;
+            box-shadow: 0 1px 0 rgba(27,31,35,0.04);
+        }
+        .section {
+            display: none;
+            margin-bottom: 30px;
+            padding: 16px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background-color: #0d1117;
+        }
+        .section.active {
+            display: block;
+        }
+        h1, h2 {
+            color: #c9d1d9;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 8px;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            padding: 8px;
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+        }
+        .nav-btn {
+            padding: 5px 16px;
+            background-color: transparent;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .nav-btn:hover {
+            background-color: #1f6feb;
+            border-color: #1f6feb;
+            color: #ffffff;
+        }
+        .nav-btn.active {
+            background-color: #238636;
+            border-color: #238636;
+            color: #ffffff;
+        }
+        button {
+            padding: 5px 16px;
+            background-color: #238636;
+            color: #ffffff;
+            border: 1px solid rgba(240,246,252,0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #2ea043;
+        }
+        button:disabled {
+            background-color: #22863a66;
+            cursor: not-allowed;
+        }
+        #output {
+            margin-top: 16px;
+            padding: 16px;
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #8b949e;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        .status {
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .success {
+            background-color: rgba(35,134,54,0.15);
+            color: #3fb950;
+            border: 1px solid rgba(35,134,54,0.4);
+        }
+        .error {
+            background-color: rgba(248,81,73,0.15);
+            color: #f85149;
+            border: 1px solid rgba(248,81,73,0.4);
+        }
+        input[type="file"] {
+            padding: 8px;
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            width: 100%;
+            margin-bottom: 16px;
+            box-sizing: border-box;
+        }
+        input[type="file"]::-webkit-file-upload-button {
+            padding: 5px 16px;
+            background-color: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        input[type="file"]::-webkit-file-upload-button:hover {
+            background-color: #30363d;
+        }
+        .workflow-container {
+            display: flex;
+            gap: 24px;
+            margin-top: 20px;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+        
+        .steps-panel {
+            flex: 0 0 240px;
+            min-width: 200px;
+        }
+        
+        .output-panel {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
+        
+        .output-panel .section {
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        .output-panel .section.active {
+            display: block;
+        }
+        
+        .step-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background-color: #161b22;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .step-item::before {
+            content: "";
+            position: absolute;
+            left: -16px;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #30363d;
+            transform: translateY(-50%);
+        }
+        
+        .step-item.current::before {
+            background-color: #1f6feb;
+        }
+        
+        .step-item.completed::before {
+            background-color: #238636;
+        }
+        
+        .step-item.error::before {
+            background-color: #f85149;
+        }
+        
+        .step-number {
+            color: #8b949e;
+            margin-right: 8px;
+        }
+        
+        .step-title {
+            color: #c9d1d9;
+        }
+        
+        .step-item.completed .step-title {
+            color: #3fb950;
+        }
+        
+        .step-item.error .step-title {
+            color: #f85149;
+        }
+
+        #uploadSection {
+            box-sizing: border-box;
+        }
+
+        .host-list {
+            background-color: #161b22;
+            padding: 16px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            margin-top: 16px;
+        }
+
+        .host-list h4 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #c9d1d9;
+        }
+
+        .host-item {
+            color: #8b949e;
+            margin-bottom: 8px;
+            padding: 8px;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+        }
+
+        /* 添加登录表单样式 */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 24px;
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+        }
+        
+        .login-form input[type="text"],
+        .login-form input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 16px;
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            box-sizing: border-box;
+        }
+        
+        .login-form label {
+            display: block;
+            margin-bottom: 8px;
+            color: #c9d1d9;
+        }
+        
+        #loginError {
+            color: #f85149;
+            margin-bottom: 16px;
+        }
+
+        /* 添加环境选择下拉框样式 */
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 16px;
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <!-- 添加登录表单 -->
+    <div class="login-container" id="loginForm">
+        <h1>登录</h1>
+        <div class="login-form">
+            <div id="loginError"></div>
+            <label for="username">用户名</label>
+            <input type="text" id="username" required>
+            <label for="password">密码</label>
+            <input type="password" id="password" required>
+            <button onclick="login()">登录</button>
+        </div>
+    </div>
+
+    <!-- 主要内容容器 -->
+    <div class="container" id="mainContent" style="display: none;">
+        <h1>CSS Windows Server 自动部署系统</h1>
+        
+        <div class="prerequisites" style="margin-bottom: 24px; padding: 16px; background-color: #161b22; border: 1px solid #30363d; border-radius: 6px;">
+            <h2 style="margin-top: 0;">前置条件</h2>
+            <h3>1. Windows Server 配置要求</h3>
+            <pre style="background-color: #0d1117; padding: 16px; border-radius: 6px; overflow-x: auto;">
+# 设置 HTTP 服务为自动启动
+Set-Service -Name HTTP -StartupType Automatic
+
+# 启动 HTTP 服务
+Start-Service -Name HTTP
+
+# 启动 WinRM 服务
+Start-Service -Name WinRM 
+
+# 配置 WinRM
+$ansibleconfigurl = "https://gh-proxy.com/raw.githubusercontent.com/ansible/ansible-documentation/refs/heads/devel/examples/scripts/ConfigureRemotingForAnsible.ps1"
+$ansibleconfig = "$env:temp\ConfigureRemotingForAnsible.ps1"
+(New-Object -TypeName System.Net.WebClient).DownloadFile($ansibleconfigurl, $ansibleconfig)
+powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
+            
+            <h3>2. Ansible 配置要求</h3>
+            <p>在 1.170 服务器上配置 Windows 目标机器：</p>
+            <p>在 /etc/ansible/hosts 文件的 [windows] 部分中添加相应的账号密码配置。</p>
+        </div>
+
+        <div class="workflow-container">
+            <div class="steps-panel">
+                <div class="step-item current" id="uploadStep">
+                    <span class="step-number">1.</span>
+                    <span class="step-title">文件上传</span>
+                </div>
+                <div class="step-item" id="deployStep">
+                    <span class="step-number">2.</span>
+                    <span class="step-title">部署操作</span>
+                </div>
+            </div>
+            
+            <div class="output-panel">
+                <div class="section active" id="uploadSection">
+                    <div class="upload-form">
+                        <input type="file" id="fileInput" accept=".zip">
+                        <button onclick="uploadFile()" id="uploadBtn">上传文件</button>
+                        <div id="uploadStatus" class="status"></div>
+                    </div>
+                </div>
+
+                <div class="section" id="deploySection">
+                    <div class="host-selection" style="margin-bottom: 16px;">
+                        <h3>选择部署环境</h3>
+                        <select id="envSelect" onchange="showEnvironmentHosts()">
+                            <option value="">请选择环境</option>
+                            <option value="test">测试环境</option>
+                            <option value="prod">生产环境</option>
+                        </select>
+                        <!-- 添加主机列表显示区域 -->
+                        <div id="hostList" class="host-list" style="display: none;">
+                            <h4>当前环境主机列表：</h4>
+                            <div id="hostListContent"></div>
+                        </div>
+                    </div>
+                    <button onclick="deploy()" id="deployBtn">开始部署</button>
+                    <div id="output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        const testHosts = [''];
+        const prodHosts = [];
+
+        // 添加登录相关函数
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginError = document.getElementById('loginError');
+            
+            if (!username || !password) {
+                loginError.textContent = '请输入用户名和密码';
+                return;
+            }
+
+            // 创建 Basic Auth 凭据
+            const credentials = btoa(`${username}:${password}`);
+            
+            try {
+                // 测试认证
+                const response = await fetch('/api/hosts', {
+                    headers: {
+                        'Authorization': `Basic ${credentials}`
+                    }
+                });
+
+                if (response.ok) {
+                    // 保存凭据并显示主界面
+                    sessionStorage.setItem('auth', credentials);
+                    document.getElementById('loginForm').style.display = 'none';
+                    document.getElementById('mainContent').style.display = 'block';
+                } else {
+                    loginError.textContent = '用户名或密码错误';
+                }
+            } catch (error) {
+                loginError.textContent = '登录失败，请稍后重试';
+                console.error('Login error:', error);
+            }
+        }
+
+        // 修改现有的 fetch 请求，添加认证头
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadStatus = document.getElementById('uploadStatus');
+            const uploadStep = document.getElementById('uploadStep');
+            const deployStep = document.getElementById('deployStep');
+            
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                uploadStatus.textContent = '请选择文件';
+                uploadStatus.className = 'status error';
+                return;
+            }
+
+            // 检查文件类型
+            if (!file.name.toLowerCase().endsWith('.zip')) {
+                uploadStatus.textContent = '只能上传 ZIP 格式的文件';
+                uploadStatus.className = 'status error';
+                fileInput.value = ''; // 清空文件选择
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadBtn.disabled = true;
+            uploadStatus.textContent = '上传中...';
+            uploadStatus.className = 'status';
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${sessionStorage.getItem('auth')}`
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    uploadStatus.textContent = '文件上传成功';
+                    uploadStatus.className = 'status success';
+                    uploadStep.classList.remove('current');
+                    uploadStep.classList.add('completed');
+                    deployStep.classList.add('current');
+                    showSection('deploy');
+                } else {
+                    const error = await response.text();
+                    uploadStatus.textContent = `上传失败: ${error}`;
+                    uploadStatus.className = 'status error';
+                    uploadStep.classList.add('error');
+                }
+            } catch (error) {
+                uploadStatus.textContent = `上传出错: ${error.message}`;
+                uploadStatus.className = 'status error';
+                uploadStep.classList.add('error');
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+
+        // 添加显示环境主机的函数
+        function showEnvironmentHosts() {
+            const envSelect = document.getElementById('envSelect');
+            const hostList = document.getElementById('hostList');
+            const hostListContent = document.getElementById('hostListContent');
+            const selectedEnv = envSelect.value;
+            
+            if (!selectedEnv) {
+                hostList.style.display = 'none';
+                return;
+            }
+            
+            // 获取对应环境的主机列表
+            const hosts = selectedEnv === 'test' ? testHosts : prodHosts;
+            
+            // 清空并重新填充主机列表
+            hostListContent.innerHTML = '';
+            hosts.forEach(host => {
+                const hostItem = document.createElement('div');
+                hostItem.className = 'host-item';
+                hostItem.textContent = host;
+                hostListContent.appendChild(hostItem);
+            });
+            
+            // 显示主机列表
+            hostList.style.display = 'block';
+        }
+
+        async function deploy() {
+            const deployBtn = document.getElementById('deployBtn');
+            const output = document.getElementById('output');
+            const envSelect = document.getElementById('envSelect');
+            const selectedEnv = envSelect.value;
+            
+            if (!selectedEnv) {
+                output.innerHTML = '请选择部署环境<br><br>';
+                return;
+            }
+            
+            // 获取对应环境的主机列表
+            const selectedHosts = selectedEnv === 'test' ? testHosts : prodHosts;
+            
+            if (selectedHosts.length === 0) {
+                output.innerHTML = '当前环境没有可用的主机<br><br>';
+                return;
+            }
+            
+            deployBtn.disabled = true;
+            output.innerHTML = `开始在${selectedEnv === 'test' ? '测试' : '生产'}环境进行部署...<br><br>`;
+
+            try {
+                const response = await fetch('/api/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${sessionStorage.getItem('auth')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        hosts: selectedHosts
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const {value, done} = await reader.read();
+                    if (done) {
+                        deployStep.classList.remove('current');
+                        deployStep.classList.add('completed');
+                        deployBtn.disabled = true;
+                        break;
+                    }
+                    
+                    const text = decoder.decode(value);
+                    const lines = text.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            output.innerHTML += line.substring(6) + '<br><br>';
+                            output.scrollTop = output.scrollHeight;
+                        }
+                    }
+                }
+            } catch (error) {
+                output.innerHTML += `部署出错: ${error.message}<br><br>`;
+                deployStep.classList.remove('current');
+                deployStep.classList.add('error');
+                deployBtn.disabled = false;
+            }
+        }
+
+        function showSection(sectionName) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(`${sectionName}Section`).classList.add('active');
+        }
+
+        // 检查登录状态
+        document.addEventListener('DOMContentLoaded', () => {
+            const auth = sessionStorage.getItem('auth');
+            if (auth) {
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                // 初始化环境主机显示
+                showEnvironmentHosts();
+            }
+        });
+    </script>
+</body>
+</html> 
