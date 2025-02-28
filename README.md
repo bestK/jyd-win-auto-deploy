@@ -190,3 +190,7 @@ autoupdater.exe -watch D:\path\to\watch # 输入 zip 收集变化文件
 # 点击 deploy 按钮，更新
 ``` 
 
+### 9. 编译
+``` shell
+build.bat
+```
