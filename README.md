@@ -46,7 +46,7 @@ ansible_ssh_pass=abc123!@#
 
 
 # 主机组命名规范
-# 主机组名称为：_prod 或 _test 结尾，用于测试跟生成环境
+# 主机组名称为：_prod 或 _test 结尾，用于区分测试跟生产环境
 [win_serv_prod]
 192.168.1.121 ansible_user=ADMINISTRATOR ansible_ssh_pass='**'
 192.168.1.122 ansible_user=ADMINISTRATOR ansible_ssh_pass='**'
