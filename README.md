@@ -31,9 +31,35 @@ yum install python2-winrm.noarch
 
 ### 3. 运行
 ``` shell
-# 运行
-./autoupdater -port 8333 -pwd password123
+# 配置文件 mode 用于指定启动模式，可选值: watch, server (默认 "server")
+# server 模式下，启动服务端，提供 web 界面，用于上传 zip 文件
+# watch 模式下，启动监控程序，监控指定目录，指定时间范围，收集变化文件
+autoupdater:
+  mode: "watch" # 启动模式可选值: watch, server (默认 "server")
+  server:
+    port: 8333 # 服务端口
+    password: "123456" # 服务密码
+    upload_path: "/home/autoupdater/class/" # 上传路径
+    ansible:
+      host_config:
+        path: "/etc/ansible/hosts" # 主机配置文件路径
+        include_group:
+          - "win_css_serv_prod" # 主机组
+          - "win_css_serv_test" # 主机组
+      playbook_config:
+        path: "/home/ansible-playbook/win_auto_update_tomcat.yml" # 剧本文件路径
+        forks: 1 # 并发数
+  watch:
+    path: "D:\\linux.do" # 监听目录路径
+    exclude: "*.tmp,*.log" # 排除的文件支持正则，多个模式用逗号分隔 (例如: *.tmp,*.log)
+    time_before: "2024-08-26 00:00" # 监控时间范围
+    time_after: "2026-02-26 08:00" # 监控时间范围
 
+# 运行 windows
+./autoupdater.exe 
+
+# 运行 linux
+./autoupdater
 ```
 
 ### 4. ansible 配置
