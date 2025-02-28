@@ -172,16 +172,12 @@ ansible_winrm_read_timeout_sec=70
 ```
  
 
-### 6. 自动收集变化文件
-``` shell
-autoupdater.exe -watch D:\path\to\watch 
-```
  
-### 7. 帮助
+### 6. 帮助
 ``` shell
 autoupdater.exe -h
 ```
-### 8. 实践
+### 7. 实践
 ``` shell
 autoupdater.exe -watch D:\path\to\watch # 输入 zip 收集变化文件
 # 在浏览器中打开 http://localhost:8333/
@@ -190,7 +186,7 @@ autoupdater.exe -watch D:\path\to\watch # 输入 zip 收集变化文件
 # 点击 deploy 按钮，更新
 ``` 
 
-### 9. 编译
+### 8. 编译
 ``` shell
 build.bat
 ```
