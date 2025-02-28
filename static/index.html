@@ -500,10 +500,13 @@ powershell.exe -ExecutionPolicy ByPass -File $ansibleconfig</pre>
     </div>
 
     <script>
+
+        let testHosts = [];
+        let prodHosts = [];
         // 声明异步函数以使用 await
         async function initializeHosts() {
-            const testHosts = await fetchHosts('test');
-            const prodHosts = await fetchHosts('prod');
+            testHosts = await fetchHosts('test');
+            prodHosts = await fetchHosts('prod');
         }
 
         // 调用初始化函数

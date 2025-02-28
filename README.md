@@ -40,13 +40,42 @@ yum install python2-winrm.noarch
 ``` shell
  
 # 配置 ansible 的 hosts 文件
-[windows]
-192.168.1.100
+[webservers:vars]
+ansible_ssh_user=root
+ansible_ssh_pass=abc123!@#
 
-[windows:vars]
+
+# 主机组命名规范
+# 主机组名称为：_prod 或 _test 结尾，用于测试跟生成环境
+[win_serv_prod]
+192.168.1.121 ansible_user=ADMINISTRATOR ansible_ssh_pass='**'
+192.168.1.122 ansible_user=ADMINISTRATOR ansible_ssh_pass='**'
+192.168.1.165 ansible_user=Administrator ansible_ssh_pass='#@!'
+192.168.1.127 ansible_user=ADMINISTRATOR ansible_ssh_pass='&%'
+
+[win_serv_test]
+1.1.1.1 ansible_user=ADMINISTRATOR ansible_ssh_pass=',.'  
+
+
+[win_serv_prod:vars]
 ansible_port=5986
 ansible_connection=winrm
 ansible_winrm_server_cert_validation=ignore
+ansible_winrm_transport=basic
+ansible_winrm_scheme=https
+ansible_winrm_server_cert_validation=ignore
+ansible_winrm_operation_timeout_sec=60
+ansible_winrm_read_timeout_sec=70
+
+[win_serv_test:vars]
+ansible_port=5986
+ansible_connection=winrm
+ansible_winrm_server_cert_validation=ignore
+ansible_winrm_transport=basic
+ansible_winrm_scheme=https
+ansible_winrm_server_cert_validation=ignore
+ansible_winrm_operation_timeout_sec=60
+ansible_winrm_read_timeout_sec=70
 ```
 
 ### 5. ansible 的 playbook
